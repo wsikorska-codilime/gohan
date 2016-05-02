@@ -205,6 +205,11 @@ func (schema *Schema) ParentID() string {
 	return FormatParentID(schema.Parent)
 }
 
+// HasParent is true if schema has parent
+func (schema *Schema) HasParent() bool {
+	return schema.Parent != ""
+}
+
 // GetSingleURL returns a URL for access to a single schema object
 func (schema *Schema) GetSingleURL() string {
 	return fmt.Sprintf("%s/:id", schema.URL)

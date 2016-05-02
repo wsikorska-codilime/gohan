@@ -57,7 +57,7 @@ webui_config:
 logging:
     stderr:
         enabled: true
-        level: INFO
+        level: DEBUG
 
 extension:
   default: gohanscript

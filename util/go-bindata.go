@@ -560,27 +560,27 @@ func AssetNames() []string {
 
 // _bindata is a table, holding each asset generator, mapped to its name.
 var _bindata = map[string]func() (*asset, error){
-	"etc/schema/core.json": etcSchemaCoreJson,
-	"etc/schema/gohan.json": etcSchemaGohanJson,
-	"etc/extensions/gohan_extension.yaml": etcExtensionsGohan_extensionYaml,
-	"etc/templates/markdown.tmpl": etcTemplatesMarkdownTmpl,
-	"etc/templates/openapi.tmpl": etcTemplatesOpenapiTmpl,
+	"etc/schema/core.json":                              etcSchemaCoreJson,
+	"etc/schema/gohan.json":                             etcSchemaGohanJson,
+	"etc/extensions/gohan_extension.yaml":               etcExtensionsGohan_extensionYaml,
+	"etc/templates/markdown.tmpl":                       etcTemplatesMarkdownTmpl,
+	"etc/templates/openapi.tmpl":                        etcTemplatesOpenapiTmpl,
 	"public/webui/46661d6d65debc63884004fed6e37e5c.svg": publicWebui46661d6d65debc63884004fed6e37e5cSvg,
 	"public/webui/b7449d6115c7b39d6d92f8b310a062b0.png": publicWebuiB7449d6115c7b39d6d92f8b310a062b0Png,
-	"public/webui/bundle.js": publicWebuiBundleJs,
-	"public/webui/config.json": publicWebuiConfigJson,
-	"public/webui/fontawesome-webfont.eot": publicWebuiFontawesomeWebfontEot,
-	"public/webui/fontawesome-webfont.svg": publicWebuiFontawesomeWebfontSvg,
-	"public/webui/fontawesome-webfont.ttf": publicWebuiFontawesomeWebfontTtf,
-	"public/webui/fontawesome-webfont.woff": publicWebuiFontawesomeWebfontWoff,
-	"public/webui/fontawesome-webfont.woff2": publicWebuiFontawesomeWebfontWoff2,
-	"public/webui/glyphicons-halflings-regular.eot": publicWebuiGlyphiconsHalflingsRegularEot,
-	"public/webui/glyphicons-halflings-regular.svg": publicWebuiGlyphiconsHalflingsRegularSvg,
-	"public/webui/glyphicons-halflings-regular.ttf": publicWebuiGlyphiconsHalflingsRegularTtf,
-	"public/webui/glyphicons-halflings-regular.woff": publicWebuiGlyphiconsHalflingsRegularWoff,
-	"public/webui/glyphicons-halflings-regular.woff2": publicWebuiGlyphiconsHalflingsRegularWoff2,
-	"public/webui/index.html": publicWebuiIndexHtml,
-	"public/webui/styles.css": publicWebuiStylesCss,
+	"public/webui/bundle.js":                            publicWebuiBundleJs,
+	"public/webui/config.json":                          publicWebuiConfigJson,
+	"public/webui/fontawesome-webfont.eot":              publicWebuiFontawesomeWebfontEot,
+	"public/webui/fontawesome-webfont.svg":              publicWebuiFontawesomeWebfontSvg,
+	"public/webui/fontawesome-webfont.ttf":              publicWebuiFontawesomeWebfontTtf,
+	"public/webui/fontawesome-webfont.woff":             publicWebuiFontawesomeWebfontWoff,
+	"public/webui/fontawesome-webfont.woff2":            publicWebuiFontawesomeWebfontWoff2,
+	"public/webui/glyphicons-halflings-regular.eot":     publicWebuiGlyphiconsHalflingsRegularEot,
+	"public/webui/glyphicons-halflings-regular.svg":     publicWebuiGlyphiconsHalflingsRegularSvg,
+	"public/webui/glyphicons-halflings-regular.ttf":     publicWebuiGlyphiconsHalflingsRegularTtf,
+	"public/webui/glyphicons-halflings-regular.woff":    publicWebuiGlyphiconsHalflingsRegularWoff,
+	"public/webui/glyphicons-halflings-regular.woff2":   publicWebuiGlyphiconsHalflingsRegularWoff2,
+	"public/webui/index.html":                           publicWebuiIndexHtml,
+	"public/webui/styles.css":                           publicWebuiStylesCss,
 }
 
 // AssetDir returns the file names below a certain
@@ -622,38 +622,39 @@ type bintree struct {
 	Func     func() (*asset, error)
 	Children map[string]*bintree
 }
+
 var _bintree = &bintree{nil, map[string]*bintree{
 	"etc": &bintree{nil, map[string]*bintree{
 		"extensions": &bintree{nil, map[string]*bintree{
 			"gohan_extension.yaml": &bintree{etcExtensionsGohan_extensionYaml, map[string]*bintree{}},
 		}},
 		"schema": &bintree{nil, map[string]*bintree{
-			"core.json": &bintree{etcSchemaCoreJson, map[string]*bintree{}},
+			"core.json":  &bintree{etcSchemaCoreJson, map[string]*bintree{}},
 			"gohan.json": &bintree{etcSchemaGohanJson, map[string]*bintree{}},
 		}},
 		"templates": &bintree{nil, map[string]*bintree{
 			"markdown.tmpl": &bintree{etcTemplatesMarkdownTmpl, map[string]*bintree{}},
-			"openapi.tmpl": &bintree{etcTemplatesOpenapiTmpl, map[string]*bintree{}},
+			"openapi.tmpl":  &bintree{etcTemplatesOpenapiTmpl, map[string]*bintree{}},
 		}},
 	}},
 	"public": &bintree{nil, map[string]*bintree{
 		"webui": &bintree{nil, map[string]*bintree{
 			"46661d6d65debc63884004fed6e37e5c.svg": &bintree{publicWebui46661d6d65debc63884004fed6e37e5cSvg, map[string]*bintree{}},
 			"b7449d6115c7b39d6d92f8b310a062b0.png": &bintree{publicWebuiB7449d6115c7b39d6d92f8b310a062b0Png, map[string]*bintree{}},
-			"bundle.js": &bintree{publicWebuiBundleJs, map[string]*bintree{}},
-			"config.json": &bintree{publicWebuiConfigJson, map[string]*bintree{}},
-			"fontawesome-webfont.eot": &bintree{publicWebuiFontawesomeWebfontEot, map[string]*bintree{}},
-			"fontawesome-webfont.svg": &bintree{publicWebuiFontawesomeWebfontSvg, map[string]*bintree{}},
-			"fontawesome-webfont.ttf": &bintree{publicWebuiFontawesomeWebfontTtf, map[string]*bintree{}},
-			"fontawesome-webfont.woff": &bintree{publicWebuiFontawesomeWebfontWoff, map[string]*bintree{}},
-			"fontawesome-webfont.woff2": &bintree{publicWebuiFontawesomeWebfontWoff2, map[string]*bintree{}},
-			"glyphicons-halflings-regular.eot": &bintree{publicWebuiGlyphiconsHalflingsRegularEot, map[string]*bintree{}},
-			"glyphicons-halflings-regular.svg": &bintree{publicWebuiGlyphiconsHalflingsRegularSvg, map[string]*bintree{}},
-			"glyphicons-halflings-regular.ttf": &bintree{publicWebuiGlyphiconsHalflingsRegularTtf, map[string]*bintree{}},
-			"glyphicons-halflings-regular.woff": &bintree{publicWebuiGlyphiconsHalflingsRegularWoff, map[string]*bintree{}},
-			"glyphicons-halflings-regular.woff2": &bintree{publicWebuiGlyphiconsHalflingsRegularWoff2, map[string]*bintree{}},
-			"index.html": &bintree{publicWebuiIndexHtml, map[string]*bintree{}},
-			"styles.css": &bintree{publicWebuiStylesCss, map[string]*bintree{}},
+			"bundle.js":                            &bintree{publicWebuiBundleJs, map[string]*bintree{}},
+			"config.json":                          &bintree{publicWebuiConfigJson, map[string]*bintree{}},
+			"fontawesome-webfont.eot":              &bintree{publicWebuiFontawesomeWebfontEot, map[string]*bintree{}},
+			"fontawesome-webfont.svg":              &bintree{publicWebuiFontawesomeWebfontSvg, map[string]*bintree{}},
+			"fontawesome-webfont.ttf":              &bintree{publicWebuiFontawesomeWebfontTtf, map[string]*bintree{}},
+			"fontawesome-webfont.woff":             &bintree{publicWebuiFontawesomeWebfontWoff, map[string]*bintree{}},
+			"fontawesome-webfont.woff2":            &bintree{publicWebuiFontawesomeWebfontWoff2, map[string]*bintree{}},
+			"glyphicons-halflings-regular.eot":     &bintree{publicWebuiGlyphiconsHalflingsRegularEot, map[string]*bintree{}},
+			"glyphicons-halflings-regular.svg":     &bintree{publicWebuiGlyphiconsHalflingsRegularSvg, map[string]*bintree{}},
+			"glyphicons-halflings-regular.ttf":     &bintree{publicWebuiGlyphiconsHalflingsRegularTtf, map[string]*bintree{}},
+			"glyphicons-halflings-regular.woff":    &bintree{publicWebuiGlyphiconsHalflingsRegularWoff, map[string]*bintree{}},
+			"glyphicons-halflings-regular.woff2":   &bintree{publicWebuiGlyphiconsHalflingsRegularWoff2, map[string]*bintree{}},
+			"index.html":                           &bintree{publicWebuiIndexHtml, map[string]*bintree{}},
+			"styles.css":                           &bintree{publicWebuiStylesCss, map[string]*bintree{}},
 		}},
 	}},
 }}
@@ -704,4 +705,3 @@ func _filePath(dir, name string) string {
 	cannonicalName := strings.Replace(name, "\\", "/", -1)
 	return filepath.Join(append([]string{dir}, strings.Split(cannonicalName, "/")...)...)
 }
-

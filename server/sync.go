@@ -333,7 +333,7 @@ func StateUpdate(response *gohan_sync.Event, server *Server) error {
 	context := map[string]interface{}{}
 
 	if haveEnvironment {
-		serviceAuthorization, _ := server.keystoneIdentity.GetServiceAuthorization()
+		serviceAuthorization, _ := server.identityService.GetServiceAuthorization()
 
 		context["catalog"] = serviceAuthorization.Catalog()
 		context["auth_token"] = serviceAuthorization.AuthToken()

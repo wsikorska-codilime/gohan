@@ -19,12 +19,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/cloudwan/gohan/schema"
 	"github.com/cloudwan/gohan/util"
-	"github.com/go-martini/martini"
+	"github.com/gin-gonic/gin"
 	"github.com/rackspace/gophercloud"
 )
 
@@ -199,33 +198,30 @@ func (identity *FakeIdentity) GetServiceAuthorization() (schema.Authorization, e
 }
 
 //FakeKeystone server for only test purpose
-func FakeKeystone(martini *martini.ClassicMartini) {
+func FakeKeystone(router *gin.Engine) {
 	//mocking keystone v2.0 API
-	martini.Post("/v2.0/tokens", func(w http.ResponseWriter, r *http.Request) {
-		authRequest, err := ReadJSON(r)
+	router.POST("/v2.0/tokens", func(c *gin.Context) {
+		var authRequest interface{}
+		err := c.BindJSON(authRequest)
 		if err != nil {
-			http.Error(w, "", http.StatusBadRequest)
+			c.AbortWithStatus(http.StatusBadRequest)
 		}
 		username, err := util.GetByJSONPointer(authRequest, "/auth/passwordCredentials/username")
 		if err != nil {
-			http.Error(w, "", http.StatusBadRequest)
+			c.AbortWithStatus(http.StatusBadRequest)
 		}
 
 		token, ok := fakeTokens[fmt.Sprintf("%v_token", username)]
 		if !ok {
-			http.Error(w, "", http.StatusUnauthorized)
+			c.AbortWithStatus(http.StatusUnauthorized)
 		}
 
-		serializedToken, _ := json.Marshal(token)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Length", strconv.Itoa(len(serializedToken)))
-		w.Write(serializedToken)
+		c.JSON(http.StatusOK, token)
 	})
 
-	for tokenID, rawToken := range fakeTokens {
-		serializedToken, _ := json.Marshal(rawToken)
-		martini.Get("/v2.0/tokens/"+tokenID, func(w http.ResponseWriter, r *http.Request) {
-			w.Write(serializedToken)
+	for tokenID, token := range fakeTokens {
+		router.GET("/v2.0/tokens/"+tokenID, func(c *gin.Context) {
+			c.JSON(http.StatusOK, token)
 		})
 	}
 }

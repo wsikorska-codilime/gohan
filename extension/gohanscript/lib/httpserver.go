@@ -25,8 +25,8 @@ import (
 	"github.com/cloudwan/gohan/server"
 	"github.com/cloudwan/gohan/server/middleware"
 	"github.com/cloudwan/gohan/util"
-	"github.com/drone/routes"
-	"github.com/go-martini/martini"
+
+	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 )
 
@@ -34,38 +34,32 @@ func init() {
 	gohanscript.RegisterStmtParser("http_server", httpServer)
 }
 
-func serveResponse(w http.ResponseWriter, context map[string]interface{}) {
+func serveResponse(c *gin.Context, context map[string]interface{}) {
 	response := context["response"]
 	responseCode, ok := context["code"].(int)
 	if !ok {
 		responseCode = 200
 	}
 	if 200 <= responseCode && responseCode < 300 {
-		w.WriteHeader(responseCode)
-		routes.ServeJson(w, response)
+		c.JSON(responseCode, response)
 	} else {
 		message := util.MaybeMap(context["exception"])
-		middleware.HTTPJSONError(w, message["message"].(string), responseCode)
+		middleware.HTTPJSONError(c, message["message"].(string), responseCode)
 	}
 }
 
 func fillInContext(context middleware.Context,
-	r *http.Request, w http.ResponseWriter, p martini.Params) {
+	r *http.Request, w http.ResponseWriter) {
 	context["path"] = r.URL.Path
 	context["http_request"] = r
 	context["http_response"] = w
-	context["params"] = p
 	context["host"] = r.Host
 	context["method"] = r.Method
 }
 
 func httpServer(stmt *gohanscript.Stmt) (func(*gohanscript.Context) (interface{}, error), error) {
 	return func(globalContext *gohanscript.Context) (interface{}, error) {
-		m := martini.Classic()
-
-		m.Handlers()
-		m.Use(middleware.Logging())
-		m.Use(martini.Recovery())
+		router := gin.Default()
 
 		rawBody := util.MaybeMap(stmt.RawData["http_server"])
 		paths := util.MaybeMap(rawBody["paths"])
@@ -77,9 +71,11 @@ func httpServer(stmt *gohanscript.Stmt) (func(*gohanscript.Context) (interface{}
 			if err != nil {
 				return nil, err
 			}
-			m.Use(func(w http.ResponseWriter, r *http.Request) {
+			router.Use(func(c *gin.Context) {
+				r := c.Request
+				w := c.Writer
 				context := globalContext.Extend(nil)
-				fillInContext(context.Data(), r, w, nil)
+				fillInContext(context.Data(), r, w)
 
 				reqData, _ := ioutil.ReadAll(r.Body)
 				buff := ioutil.NopCloser(bytes.NewBuffer(reqData))
@@ -110,46 +106,58 @@ func httpServer(stmt *gohanscript.Stmt) (func(*gohanscript.Context) (interface{}
 				}
 				switch method {
 				case "get":
-					m.Get(path, func(w http.ResponseWriter, r *http.Request, p martini.Params) {
+					router.GET(path, func(c *gin.Context) {
+						r := c.Request
+						w := c.Writer
 						context := globalContext.Extend(nil)
-						fillInContext(context.Data(), r, w, p)
+						fillInContext(context.Data(), r, w)
+						context.Set("param", c.Params)
 						vm.Run(context.Data())
-						serveResponse(w, context.Data())
+						serveResponse(c, context.Data())
 					})
 				case "post":
-					m.Post(path, func(w http.ResponseWriter, r *http.Request, p martini.Params) {
+					router.POST(path, func(c *gin.Context) {
+						r := c.Request
+						w := c.Writer
 						context := globalContext.Extend(nil)
-						fillInContext(context.Data(), r, w, p)
+						fillInContext(context.Data(), r, w)
+						context.Set("param", c.Params)
 						requestData, _ := middleware.ReadJSON(r)
 						context.Set("request", requestData)
 						vm.Run(context.Data())
-						serveResponse(w, context.Data())
+						serveResponse(c, context.Data())
 					})
 				case "put":
-					m.Put(path, func(w http.ResponseWriter, r *http.Request, p martini.Params) {
+					router.PUT(path, func(c *gin.Context) {
+						r := c.Request
+						w := c.Writer
 						context := globalContext.Extend(nil)
-						fillInContext(context.Data(), r, w, p)
+						fillInContext(context.Data(), r, w)
+						context.Set("param", c.Params)
 						requestData, _ := middleware.ReadJSON(r)
 						context.Set("request", requestData)
 						vm.Run(context.Data())
-						serveResponse(w, context.Data())
+						serveResponse(c, context.Data())
 					})
 				case "delete":
-					m.Delete(path, func(w http.ResponseWriter, r *http.Request, p martini.Params) {
+					router.DELETE(path, func(c *gin.Context) {
+						r := c.Request
+						w := c.Writer
 						context := globalContext.Extend(nil)
-						fillInContext(context.Data(), r, w, p)
+						fillInContext(context.Data(), r, w)
+						context.Set("param", c.Params)
 						vm.Run(context.Data())
-						serveResponse(w, context.Data())
+						serveResponse(c, context.Data())
 					})
 				}
 			}
 		}
 		testMode := stmt.Args["test"].Value(globalContext).(bool)
 		if testMode {
-			ts := httptest.NewServer(m)
+			ts := httptest.NewServer(router)
 			return ts, nil
 		}
-		m.RunOnAddr(stmt.Args["address"].Value(globalContext).(string))
+		router.Run(stmt.Args["address"].Value(globalContext).(string))
 		return nil, nil
 	}, nil
 }

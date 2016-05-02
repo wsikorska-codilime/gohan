@@ -27,8 +27,7 @@ import (
 	"github.com/cloudwan/gohan/server/middleware"
 	"github.com/cloudwan/gohan/server/resources"
 	"github.com/cloudwan/gohan/sync"
-	"github.com/drone/routes"
-	"github.com/go-martini/martini"
+	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -141,20 +140,19 @@ func unwrapExtensionException(exceptionInfo map[string]interface{}) (message map
 	return message, code
 }
 
-func handleError(writer http.ResponseWriter, err error) {
+func handleError(c *gin.Context, err error) {
 	switch err := err.(type) {
 	default:
-		middleware.HTTPJSONError(writer, err.Error(), http.StatusInternalServerError)
+		middleware.HTTPJSONError(c, err.Error(), http.StatusInternalServerError)
 	case resources.ResourceError:
 		code := problemToResponseCode(err.Problem)
-		middleware.HTTPJSONError(writer, err.Message, code)
+		middleware.HTTPJSONError(c, err.Message, code)
 	case extension.Error:
 		message, code := unwrapExtensionException(err.ExceptionInfo)
 		if 200 <= code && code < 300 {
-			writer.WriteHeader(code)
-			routes.ServeJson(writer, message)
+			c.JSON(code, message)
 		} else {
-			middleware.HTTPJSONError(writer, message["error"].(string), code)
+			middleware.HTTPJSONError(c, message["error"].(string), code)
 		}
 	}
 }
@@ -181,7 +179,7 @@ func MapRouteBySchema(server *Server, dataStore db.DB, s *schema.Schema) {
 	if s.IsAbstract() {
 		return
 	}
-	route := server.martini
+	route := server.router
 	manager := schema.GetManager()
 
 	singleURL := s.GetSingleURL()
@@ -206,63 +204,87 @@ func MapRouteBySchema(server *Server, dataStore db.DB, s *schema.Schema) {
 	log.Debug("[Singular Path With Parents] %s", singleURLWithParents)
 
 	//setup list route
-	getPluralFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
+	getPluralFunc := func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
+		identityService := server.identityService
+		context := c.MustGet("context").(middleware.Context)
 		addJSONContentTypeHeader(w)
 		fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
 		if err := resources.GetMultipleResources(context, dataStore, s, r.URL.Query()); err != nil {
-			handleError(w, err)
+			handleError(c, err)
 			return
 		}
 		w.Header().Add("X-Total-Count", fmt.Sprint(context["total"]))
-		routes.ServeJson(w, context["response"])
+		c.JSON(http.StatusOK, context["response"])
 	}
-	route.Get(pluralURL, middleware.Authorization(schema.ActionRead), getPluralFunc)
-	route.Get(pluralURLWithParents, middleware.Authorization(schema.ActionRead), func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-		addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-		getPluralFunc(w, r, p, identityService, context)
-	})
+	route.GET(pluralURL, getPluralFunc)
+
+	if s.HasParent() {
+		route.GET(pluralURLWithParents, func(c *gin.Context) {
+			r := c.Request
+			addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+			getPluralFunc(c)
+		})
+	}
 
 	//setup show route
-	getSingleFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
+	getSingleFunc := func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
 		addJSONContentTypeHeader(w)
+		identityService := server.identityService
+		context := c.MustGet("context").(middleware.Context)
 		fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
-		id := p["id"]
+		id := c.Param("id")
 		if err := resources.GetSingleResource(context, dataStore, s, id); err != nil {
-			handleError(w, err)
+			handleError(c, err)
 			return
 		}
-		routes.ServeJson(w, context["response"])
+		c.JSON(http.StatusOK, context["response"])
 	}
-	route.Get(singleURL, middleware.Authorization(schema.ActionRead), getSingleFunc)
-	route.Get(singleURLWithParents, middleware.Authorization(schema.ActionRead), func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-		addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-		getSingleFunc(w, r, p, identityService, context)
-	})
-
+	route.GET(singleURL, getSingleFunc)
+	if s.HasParent() {
+		route.GET(singleURLWithParents, func(c *gin.Context) {
+			r := c.Request
+			addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+			getSingleFunc(c)
+		})
+	}
 	//setup delete route
-	deleteSingleFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
+	deleteSingleFunc := func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
+		identityService := server.identityService
+		context := c.MustGet("context").(middleware.Context)
 		addJSONContentTypeHeader(w)
 		fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
-		id := p["id"]
+		id := c.Param("id")
 		if err := resources.DeleteResource(context, dataStore, s, id); err != nil {
-			handleError(w, err)
+			handleError(c, err)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		c.Status(http.StatusNoContent)
 	}
-	route.Delete(singleURL, middleware.Authorization(schema.ActionDelete), deleteSingleFunc)
-	route.Delete(singleURLWithParents, middleware.Authorization(schema.ActionDelete), func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-		addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-		deleteSingleFunc(w, r, p, identityService, context)
-	})
-
+	route.DELETE(singleURL, deleteSingleFunc)
+	if s.HasParent() {
+		route.DELETE(singleURLWithParents, func(c *gin.Context) {
+			r := c.Request
+			addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+			deleteSingleFunc(c)
+		})
+	}
 	//setup create route
-	postPluralFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
+	postPluralFunc := func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
 		addJSONContentTypeHeader(w)
+		identityService := server.identityService
+		context := c.MustGet("context").(middleware.Context)
 		fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
 		dataMap, err := middleware.ReadJSON(r)
 		if err != nil {
-			handleError(w, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
+			handleError(c, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
 			return
 		}
 		dataMap = removeResourceWrapper(s, dataMap)
@@ -276,59 +298,72 @@ func MapRouteBySchema(server *Server, dataStore db.DB, s *schema.Schema) {
 			}
 		}
 		if err := resources.CreateResource(context, dataStore, identityService, s, dataMap); err != nil {
-			handleError(w, err)
+			handleError(c, err)
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
-		routes.ServeJson(w, context["response"])
+		c.JSON(http.StatusAccepted, context["response"])
 	}
-	route.Post(pluralURL, middleware.Authorization(schema.ActionCreate), postPluralFunc)
-	route.Post(pluralURLWithParents, middleware.Authorization(schema.ActionCreate),
-		func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-			addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-			postPluralFunc(w, r, p, identityService, context)
-		})
-
+	route.POST(pluralURL, postPluralFunc)
+	if s.HasParent() {
+		route.POST(pluralURLWithParents,
+			func(c *gin.Context) {
+				r := c.Request
+				addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+				postPluralFunc(c)
+			})
+	}
 	//setup update route
-	putSingleFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
+	putSingleFunc := func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
 		addJSONContentTypeHeader(w)
+		identityService := server.identityService
+		context := c.MustGet("context").(middleware.Context)
 		fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
-		id := p["id"]
+		id := c.Param("id")
 		dataMap, err := middleware.ReadJSON(r)
 		if err != nil {
-			handleError(w, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
+			handleError(c, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
 			return
 		}
 		dataMap = removeResourceWrapper(s, dataMap)
 		if err := resources.UpdateResource(
 			context, dataStore, identityService, s, id, dataMap); err != nil {
-			handleError(w, err)
+			handleError(c, err)
 			return
 		}
-		routes.ServeJson(w, context["response"])
+		c.JSON(http.StatusOK, context["response"])
 	}
-	route.Put(singleURL, middleware.Authorization(schema.ActionUpdate), putSingleFunc)
-	route.Put(singleURLWithParents, middleware.Authorization(schema.ActionUpdate),
-		func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-			addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-			putSingleFunc(w, r, p, identityService, context)
-		})
-
-	route.Patch(singleURL, middleware.Authorization(schema.ActionUpdate), putSingleFunc)
-	route.Patch(singleURLWithParents, middleware.Authorization(schema.ActionUpdate),
-		func(w http.ResponseWriter, r *http.Request, p martini.Params, identityService middleware.IdentityService, context middleware.Context) {
-			addParamToQuery(r, schema.FormatParentID(s.Parent), p[s.Parent])
-			putSingleFunc(w, r, p, identityService, context)
-		})
-
+	route.PUT(singleURL, putSingleFunc)
+	if s.HasParent() {
+		route.PUT(singleURLWithParents,
+			func(c *gin.Context) {
+				r := c.Request
+				addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+				putSingleFunc(c)
+			})
+	}
+	route.PATCH(singleURL, putSingleFunc)
+	if s.HasParent() {
+		route.PATCH(singleURLWithParents,
+			func(c *gin.Context) {
+				r := c.Request
+				addParamToQuery(r, schema.FormatParentID(s.Parent), c.Param(s.Parent))
+				putSingleFunc(c)
+			})
+	}
 	//Custom action support
 	for _, actionExt := range s.Actions {
 		action := actionExt
-		ActionFunc := func(w http.ResponseWriter, r *http.Request, p martini.Params,
-			identityService middleware.IdentityService, auth schema.Authorization, context middleware.Context) {
+		ActionFunc := func(c *gin.Context) {
+			r := c.Request
+			w := c.Writer
 			addJSONContentTypeHeader(w)
-			fillInContext(context, dataStore, r, w, s, server.sync, identityService, server.queue)
-			id := p["id"]
+			auth := c.MustGet("auth").(schema.Authorization)
+			identityService := server.identityService
+			context := c.MustGet("context").(middleware.Context)
+			id := c.Param("id")
 			input, err := middleware.ReadJSON(r)
 
 			// TODO use authorization middleware
@@ -336,7 +371,7 @@ func MapRouteBySchema(server *Server, dataStore db.DB, s *schema.Schema) {
 			path := r.URL.Path
 			policy, role := manager.PolicyValidate(action.ID, path, auth)
 			if policy == nil {
-				middleware.HTTPJSONError(w, fmt.Sprintf("No matching policy: %s %s %s", action, path, s.Actions), http.StatusUnauthorized)
+				middleware.HTTPJSONError(c, fmt.Sprintf("No matching policy: %s %s %s", action, path, s.Actions), http.StatusUnauthorized)
 				return
 			}
 			context["policy"] = policy
@@ -347,27 +382,30 @@ func MapRouteBySchema(server *Server, dataStore db.DB, s *schema.Schema) {
 			context["auth"] = auth
 
 			if err != nil {
-				handleError(w, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
+				handleError(c, resources.NewResourceError(err, fmt.Sprintf("Failed to parse data: %s", err), resources.WrongData))
 				return
 			}
 
 			if err := resources.ActionResource(
 				context, dataStore, identityService, s, action, id, input); err != nil {
-				handleError(w, err)
+				handleError(c, err)
 				return
 			}
-			routes.ServeJson(w, context["response"])
+			c.JSON(http.StatusOK, context["response"])
 		}
-		route.AddRoute(action.Method, s.GetActionURL(action.Path), ActionFunc)
+		route.Handle(action.Method, s.GetActionURL(action.Path), ActionFunc)
 	}
 }
 
 //MapRouteBySchemas setup route for all loaded schema
 func MapRouteBySchemas(server *Server, dataStore db.DB) {
-	route := server.martini
+	route := server.router
 	log.Debug("[Initializing Routes]")
 	schemaManager := schema.GetManager()
-	route.Get("/_all", func(w http.ResponseWriter, r *http.Request, p martini.Params, auth schema.Authorization) {
+	route.GET("/_all", func(c *gin.Context) {
+		r := c.Request
+		w := c.Writer
+		auth := c.MustGet("auth").(schema.Authorization)
 		responses := make(map[string]interface{})
 		context := map[string]interface{}{
 			"path":          r.URL.Path,
@@ -388,14 +426,14 @@ func MapRouteBySchemas(server *Server, dataStore db.DB) {
 				s,
 				resources.FilterFromQueryParameter(
 					s, r.URL.Query()), nil); err != nil {
-				handleError(w, err)
+				handleError(c, err)
 				return
 			}
 			resources.ApplyPolicyForResources(context, s)
 			response := context["response"].(map[string]interface{})
 			responses[s.GetDbTableName()] = response[s.Plural]
 		}
-		routes.ServeJson(w, responses)
+		c.JSON(http.StatusOK, responses)
 	})
 	for _, s := range schemaManager.Schemas() {
 		MapRouteBySchema(server, dataStore, s)
@@ -403,7 +441,7 @@ func MapRouteBySchemas(server *Server, dataStore db.DB) {
 }
 
 // MapNamespacesRoutes maps routes for all namespaces
-func MapNamespacesRoutes(route martini.Router) {
+func MapNamespacesRoutes(route *gin.Engine) {
 	manager := schema.GetManager()
 
 	for _, namespace := range manager.Namespaces() {
@@ -417,11 +455,11 @@ func MapNamespacesRoutes(route martini.Router) {
 
 // mapTopLevelNamespaceRoute maps route listing available subnamespaces (versions)
 // for a top-level namespace
-func mapTopLevelNamespaceRoute(route martini.Router, namespace *schema.Namespace) {
+func mapTopLevelNamespaceRoute(route *gin.Engine, namespace *schema.Namespace) {
 	log.Debug("[Path] %s/", namespace.GetFullPrefix())
-	route.Get(
+	route.GET(
 		namespace.GetFullPrefix()+"/",
-		func(w http.ResponseWriter, r *http.Request, p martini.Params, context martini.Context) {
+		func(c *gin.Context) {
 			versions := []schema.Version{}
 			for _, childNamespace := range schema.GetManager().Namespaces() {
 				if childNamespace.Parent == namespace.ID {
@@ -442,17 +480,17 @@ func mapTopLevelNamespaceRoute(route martini.Router, namespace *schema.Namespace
 				versions[len(versions)-1].Status = "CURRENT"
 			}
 
-			routes.ServeJson(w, map[string][]schema.Version{"versions": versions})
+			c.JSON(http.StatusOK, map[string][]schema.Version{"versions": versions})
 		})
 }
 
 // mapChildNamespaceRoute sets a handler returning a dictionary of resources
 // supported by a certain API version identified by the given namespace
-func mapChildNamespaceRoute(route martini.Router, namespace *schema.Namespace) {
+func mapChildNamespaceRoute(route *gin.Engine, namespace *schema.Namespace) {
 	log.Debug("[Path] %s", namespace.GetFullPrefix())
-	route.Get(
+	route.GET(
 		namespace.GetFullPrefix(),
-		func(w http.ResponseWriter, r *http.Request, p martini.Params, context martini.Context) {
+		func(c *gin.Context) {
 			resources := []schema.NamespaceResource{}
 			for _, s := range schema.GetManager().Schemas() {
 				if s.NamespaceID == namespace.ID {
@@ -469,7 +507,7 @@ func mapChildNamespaceRoute(route martini.Router, namespace *schema.Namespace) {
 				}
 			}
 
-			routes.ServeJson(w, map[string][]schema.NamespaceResource{"resources": resources})
+			c.JSON(http.StatusOK, map[string][]schema.NamespaceResource{"resources": resources})
 		},
 	)
 }

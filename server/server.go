@@ -33,9 +33,9 @@ import (
 	"github.com/cloudwan/gohan/sync"
 	"github.com/cloudwan/gohan/sync/etcd"
 	"github.com/cloudwan/gohan/util"
-	"github.com/drone/routes"
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/staticbin"
+
+	"github.com/gin-gonic/contrib/static"
+	"github.com/gin-gonic/gin"
 )
 
 type tls struct {
@@ -45,23 +45,23 @@ type tls struct {
 
 //Server is a struct for GohanAPIServer
 type Server struct {
-	address          string
-	tls              *tls
-	documentRoot     string
-	db               db.DB
-	sync             sync.Sync
-	running          bool
-	martini          *martini.ClassicMartini
-	timelimit        int
-	extensions       []string
-	keystoneIdentity middleware.IdentityService
-	queue            *job.Queue
+	address         string
+	tls             *tls
+	documentRoot    string
+	db              db.DB
+	sync            sync.Sync
+	running         bool
+	router          *gin.Engine
+	timelimit       int
+	extensions      []string
+	identityService middleware.IdentityService
+	queue           *job.Queue
 }
 
 func (server *Server) mapRoutes() {
 	config := util.GetConfig()
 	schemaManager := schema.GetManager()
-	MapNamespacesRoutes(server.martini)
+	MapNamespacesRoutes(server.router)
 	MapRouteBySchemas(server, server.db)
 
 	tx, err := server.db.Begin()
@@ -105,22 +105,12 @@ func (server *Server) mapRoutes() {
 	schemaManager.LoadNamespaces(namespaceList)
 
 	if config.GetBool("keystone/fake", false) {
-		middleware.FakeKeystone(server.martini)
+		middleware.FakeKeystone(server.router)
 	}
 }
 
-func (server *Server) addOptionsRoute() {
-	server.martini.AddRoute("OPTIONS", ".*", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-}
-
 func (server *Server) resetRouter() {
-	router := martini.NewRouter()
-	server.martini.Router = router
-	server.martini.MapTo(router, (*martini.Routes)(nil))
-	server.martini.Action(router.Handle)
-	server.addOptionsRoute()
+	server.router = gin.Default()
 }
 
 func (server *Server) initDB() error {
@@ -172,14 +162,11 @@ func NewServer(configFile string) (*Server, error) {
 
 	server := &Server{}
 
-	m := martini.Classic()
-	m.Handlers()
-	m.Use(middleware.Logging())
-	m.Use(martini.Recovery())
-	m.Use(middleware.JSONURLs())
-	m.Use(middleware.WithContext())
+	router := gin.Default()
+	server.router = router
 
-	server.martini = m
+	router.Use(middleware.JSONURLs())
+	router.Use(middleware.WithContext())
 
 	port := os.Getenv("PORT")
 
@@ -243,13 +230,13 @@ func NewServer(configFile string) (*Server, error) {
 	if config.GetBool("keystone/use_keystone", false) {
 		//TODO remove this
 		if config.GetBool("keystone/fake", false) {
-			server.keystoneIdentity = &middleware.FakeIdentity{}
+			server.identityService = &middleware.FakeIdentity{}
 			//TODO(marcin) requests to fake server also get authenticated
 			//             we need a separate routing Group
 			log.Info("Debug Mode with Fake Keystone Server")
 		} else {
 			log.Info("Keystone backend server configured")
-			server.keystoneIdentity, err = cloud.NewKeystoneIdentity(
+			server.identityService, err = cloud.NewKeystoneIdentity(
 				config.GetString("keystone/auth_url", "http://localhost:35357/v3"),
 				config.GetString("keystone/user_name", "admin"),
 				config.GetString("keystone/password", "password"),
@@ -261,8 +248,10 @@ func NewServer(configFile string) (*Server, error) {
 				log.Fatal(err)
 			}
 		}
-		m.MapTo(server.keystoneIdentity, (*middleware.IdentityService)(nil))
-		m.Use(middleware.Authentication())
+		router.Use(func(c *gin.Context) {
+			c.Set("identityService", server.identityService)
+		})
+		router.Use(middleware.Authentication())
 		//m.Use(Authorization())
 	}
 
@@ -270,23 +259,26 @@ func NewServer(configFile string) (*Server, error) {
 		return nil, fmt.Errorf("invalid base dir: %s", err)
 	}
 
-	server.addOptionsRoute()
 	cors := config.GetString("cors", "")
 	if cors != "" {
 		log.Info("Enabling CORS for %s", cors)
 		if cors == "*" {
 			log.Warning("cors for * have security issue")
 		}
-		server.martini.Use(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Header().Add("Access-Control-Allow-Origin", cors)
-			rw.Header().Add("Access-Control-Allow-Headers", "X-Auth-Token, Content-Type")
-			rw.Header().Add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE")
+		router.Use(func(c *gin.Context) {
+			if c.Request.Method == "OPTION" {
+				c.AbortWithStatus(http.StatusOK)
+			}
+			c.Header("Access-Control-Allow-Origin", cors)
+			c.Header("Access-Control-Allow-Headers", "X-Auth-Token, Content-Type")
+			c.Header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE")
 		})
 	}
 
 	documentRoot := config.GetString("document_root", "embed")
 	if config.GetBool("webui_config/enabled", false) {
-		m.Use(func(res http.ResponseWriter, req *http.Request, c martini.Context) {
+		router.Use(func(c *gin.Context) {
+			req := c.Request
 			if req.URL.Path != "/webui/config.json" {
 				c.Next()
 				return
@@ -309,22 +301,20 @@ func NewServer(configFile string) (*Server, error) {
 					"url":    baseURL,
 				},
 			}
-			routes.ServeJson(res, webUIConfig)
+			c.JSON(http.StatusOK, webUIConfig)
 		})
 	}
 	if documentRoot == "embed" {
-		m.Use(staticbin.Static("public", util.Asset, staticbin.Options{
-			SkipLogging: true,
-		}))
+		// m.Use(staticbin.Static("public", util.Asset, staticbin.Options{
+		// 	SkipLogging: true,
+		// }))
 	} else {
 		log.Info("Static file serving from %s", documentRoot)
 		documentRootABS, err := filepath.Abs(documentRoot)
 		if err != nil {
 			return nil, err
 		}
-		server.martini.Use(martini.Static(documentRootABS, martini.StaticOptions{
-			SkipLogging: true,
-		}))
+		router.Use(static.Serve("/", static.LocalFile(documentRootABS, false)))
 	}
 	server.mapRoutes()
 
@@ -337,16 +327,16 @@ func NewServer(configFile string) (*Server, error) {
 //Start starts GohanAPIServer
 func (server *Server) Start() (err error) {
 	if server.tls != nil {
-		err = http.ListenAndServeTLS(server.address, server.tls.CertFile, server.tls.KeyFile, server.martini)
+		err = http.ListenAndServeTLS(server.address, server.tls.CertFile, server.tls.KeyFile, server.router)
 	} else {
-		err = http.ListenAndServe(server.address, server.martini)
+		err = http.ListenAndServe(server.address, server.router)
 	}
 	return err
 }
 
 //Router returns http handler
 func (server *Server) Router() http.Handler {
-	return server.martini
+	return server.router
 }
 
 //Stop stops GohanAPIServer
