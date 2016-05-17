@@ -45,6 +45,9 @@ var (
 	subnetPluralURL  = baseURL + "/v2.0/subnets"
 	serverPluralURL  = baseURL + "/v2.0/servers"
 	testPluralURL    = baseURL + "/v2.0/tests"
+	oyasPluralURL  = baseURL + "/v1.0/oyas"
+	kodomosPluralURL  = baseURL + "/v1.0/kodomos"
+	gakkosPluralURL  = baseURL + "/v1.0/gakkos"
 )
 
 var _ = Describe("Server package test", func() {
@@ -236,6 +239,32 @@ var _ = Describe("Server package test", func() {
 			testURL("DELETE", getNetworkSingularURL("blue"), adminTokenID, nil, http.StatusNoContent)
 		})
 	})
+
+    Describe("TwoSameResourceRelations", func ()  {
+        It("should work", func ()  {
+			By("creating 2 gakko")
+            austinGakko := getGakko("austin")
+            bexarGakko := getGakko("bexar")
+            testURL("POST", gakkosPluralURL, adminTokenID, austinGakko, http.StatusCreated)
+            testURL("POST", gakkosPluralURL, adminTokenID, bexarGakko, http.StatusCreated)
+
+			By("creating 2 kodomo")
+            aliceKodomo := getKodomo("alice", austinGakko["id"].(string))
+            bobKodomo := getKodomo("bob", bexarGakko["id"].(string))
+            testURL("POST", kodomosPluralURL, adminTokenID, aliceKodomo, http.StatusCreated)
+            testURL("POST", kodomosPluralURL, adminTokenID, bobKodomo, http.StatusCreated)
+
+			By("creating 1 oya")
+            charlieOya := getOya("charlie", bobKodomo["id"].(string), aliceKodomo["id"].(string))
+            testURL("POST", oyasPluralURL, adminTokenID, charlieOya, http.StatusCreated)
+
+			By("assuring 1 oya was returned without error")
+			result := testURL("GET", oyasPluralURL, adminTokenID, nil, http.StatusOK)
+			res := result.(map[string]interface{})
+			oyas := res["oyas"].([]interface{})
+			Expect(oyas).To(HaveLen(1))
+        })
+    })
 
 	Describe("Subnets", func() {
 		It("should work", func() {
@@ -1111,6 +1140,28 @@ func getSubnet(color string, tenant string, parent string) map[string]interface{
 	}
 }
 
+func getGakko(name string) map[string]interface{} {
+    return map[string]interface{}{
+        "id":   "gakko" + name,
+        "name": "Gakko" + name,
+    }
+}
+
+func getKodomo(name, gakkoID string) map[string]interface{} {
+    return map[string]interface{}{
+        "id":   "kodomo" + name,
+        "gakko_id": gakkoID,
+    }
+}
+
+func getOya(name, otokoID, onnaID string) map[string]interface{} {
+    return map[string]interface{}{
+        "id":   "oya" + name,
+        "otoko_id": otokoID,
+        "onna_id": onnaID,
+    }
+}
+
 func getNetworkSingularURL(color string) string {
 	s, _ := schema.GetManager().Schema("network")
 	return baseURL + s.URL + "/network" + color
@@ -1161,13 +1212,23 @@ func clearTable(tx transaction.Transaction, s *schema.Schema) error {
 	if s.IsAbstract() {
 		return nil
 	}
+    fmt.Println(schema.GetManager().Schemas())
 	for _, schema := range schema.GetManager().Schemas() {
 		if schema.ParentSchema == s {
 			err := clearTable(tx, schema)
 			if err != nil {
 				return err
 			}
-		}
+		} else {
+            for _, property := range schema.Properties {
+                if property.Relation == s.Singular {
+                    err := clearTable(tx, schema)
+                    if err != nil {
+                        return err
+                    }
+                }
+            }
+        }
 	}
 	resources, _, err := tx.List(s, nil, nil)
 	if err != nil {

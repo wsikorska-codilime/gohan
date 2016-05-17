@@ -367,7 +367,7 @@ func init() {
 				if !ok {
 					ThrowOttoException(&call, unknownSchemaErrorMesssageFormat, schemaID)
 				}
-				results := sql.MakeColumns(s, s.GetDbTableName(), false)
+				results := sql.MakeColumns(s, s.GetDbTableName(), false, "")
 				value, _ := vm.ToValue(results)
 				return value
 			},

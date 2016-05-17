@@ -1,0 +1,89 @@
+schemas:
+
+- id: gakko
+  description: Gakko
+  singular: gakko
+  plural: gakkos
+  title: Gakko
+  prefix: /v1.0
+  schema:
+    properties:
+      id:
+        description: The ID of Gakko
+        title: ID
+        type: string
+        permission:
+        - create
+      name:
+        description: Name
+        title: Name
+        type: string
+        permission:
+        - create
+    propertiesOrder:
+    - id
+    - name
+    type: object
+
+- id: kodomo
+  description: Kodomo
+  singular: kodomo
+  plural: kodomos
+  title: Kodomo
+  prefix: /v1.0
+  schema:
+    properties:
+      id:
+        description: The ID of Kodomo
+        title: ID
+        type: string
+        permission:
+        - create
+      gakko_id:
+        description: Gakko
+        title: Gakko
+        type: string
+        relation: gakko
+        relation_property: gakko
+        permission:
+        - create
+    propertiesOrder:
+    - id
+    - gakko_id
+    type: object
+
+- id: oya
+  description: Oya
+  singular: oya
+  plural: oyas
+  title: Oya
+  prefix: /v1.0
+  schema:
+    properties:
+      id:
+        description: The ID of Oya
+        title: ID
+        type: string
+        permission:
+        - create
+      otoko_id:
+        description: Otoko no ko
+        title: Otoko
+        type: string
+        relation: kodomo
+        relation_property: otoko_kodomo
+        permission:
+        - create
+      onna_id:
+        description: Onna no ko
+        title: Onna
+        type: string
+        relation: kodomo
+        relation_property: onna_kodomo
+        permission:
+        - create
+    propertiesOrder:
+    - id
+    - otoko_id
+    - onna_id
+    type: object

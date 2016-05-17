@@ -505,14 +505,24 @@ func makeColumn(tableName string, property schema.Property) string {
 }
 
 // MakeColumns generates an array that has Gohan style colmun names
-func MakeColumns(s *schema.Schema, tableName string, join bool) []string {
+func MakeColumns(s *schema.Schema, tableName string, join bool, aliasTableName string) []string {
 	var cols []string
 	manager := schema.GetManager()
 	for _, property := range s.Properties {
-		cols = append(cols, makeColumn(tableName, property)+" as "+quote(makeColumnID(tableName, property)))
+        if aliasTableName != "" {
+		    cols = append(cols, makeColumn(aliasTableName, property)+" as "+quote(makeColumnID(tableName, property)))
+        } else {
+            cols = append(cols, makeColumn(tableName, property)+" as "+quote(makeColumnID(tableName, property)))
+        }
 		if property.RelationProperty != "" && join {
 			relatedSchema, _ := manager.Schema(property.Relation)
-			cols = append(cols, MakeColumns(relatedSchema, property.RelationProperty, true)...)
+            var newAliasTableName string
+            if aliasTableName != "" {
+                newAliasTableName = aliasTableName + "__" + property.RelationProperty
+            } else {
+                newAliasTableName = property.RelationProperty
+            }
+			cols = append(cols, MakeColumns(relatedSchema, property.RelationProperty, true, newAliasTableName)...)
 		}
 	}
 	return cols
@@ -528,17 +538,28 @@ func makeStateColumns(s *schema.Schema) (cols []string) {
 	return cols
 }
 
-func makeJoin(s *schema.Schema, tableName string, q sq.SelectBuilder) sq.SelectBuilder {
+func makeJoin(s *schema.Schema, tableName string, q sq.SelectBuilder, aliasRelationPropertyPrefix string, aliasTableName string) sq.SelectBuilder {
 	manager := schema.GetManager()
+    if aliasTableName != "" {
+        tableName = aliasTableName
+    }
 	for _, property := range s.Properties {
 		if property.RelationProperty == "" {
 			continue
 		}
 		relatedSchema, _ := manager.Schema(property.Relation)
+        aliasRelationProperty := aliasRelationPropertyPrefix + property.RelationProperty
 		q = q.LeftJoin(
-			fmt.Sprintf("%s as %s on %s.%s = %s.id", quote(relatedSchema.GetDbTableName()), quote(property.RelationProperty),
-				quote(tableName), quote(property.ID), quote(property.RelationProperty)))
-		q = makeJoin(relatedSchema, property.RelationProperty, q)
+			fmt.Sprintf("%s as %s on %s.%s = %s.id", quote(relatedSchema.GetDbTableName()), quote(aliasRelationProperty),
+				quote(tableName), quote(property.ID), quote(aliasRelationProperty)))
+        var newAliasTableName string
+        if aliasTableName != "" {
+            newAliasTableName = aliasTableName + "__" + property.RelationProperty
+        } else {
+            newAliasTableName = property.RelationProperty
+        }
+        newAliasRelationPropertyPrefix := aliasRelationProperty + "__"
+		q = makeJoin(relatedSchema, property.RelationProperty, q, newAliasRelationPropertyPrefix, newAliasTableName)
 	}
 	return q
 }
@@ -595,7 +616,7 @@ func decodeState(data map[string]interface{}, state *transaction.ResourceState) 
 
 //List resources in the db
 func (tx *Transaction) List(s *schema.Schema, filter map[string]interface{}, pg *pagination.Paginator) (list []*schema.Resource, total uint64, err error) {
-	cols := MakeColumns(s, s.GetDbTableName(), true)
+	cols := MakeColumns(s, s.GetDbTableName(), true, "")
 	q := sq.Select(cols...).From(quote(s.GetDbTableName()))
 	q, err = addFilterToQuery(s, q, filter, true)
 	if err != nil {
@@ -613,7 +634,7 @@ func (tx *Transaction) List(s *schema.Schema, filter map[string]interface{}, pg 
 			}
 		}
 	}
-	q = makeJoin(s, s.GetDbTableName(), q)
+	q = makeJoin(s, s.GetDbTableName(), q, "", "")
 
 	sql, args, err := q.ToSql()
 	if err != nil {
