@@ -49,6 +49,53 @@ var _ = Describe("Schema", func() {
 		})
 	})
 
+	Describe("Metadata", func() {
+		var metadataSchema *Schema
+		var metadataFailedSchema *Schema
+
+		BeforeEach(func() {
+			var exists bool
+			var failedExists bool
+			manager := GetManager()
+			schemaPath := "../tests/test_schema_metadata.yaml"
+			Expect(manager.LoadSchemaFromFile(schemaPath)).To(Succeed())
+			metadataSchema, exists = manager.Schema("metadata")
+			metadataFailedSchema, failedExists = manager.Schema("metadata_failed")
+			Expect(exists).To(BeTrue())
+			Expect(failedExists).To(BeTrue())
+		})
+
+		It("SyncKeyTemplate", func() {
+			Expect(metadataSchema.SyncKeyTemplate()).To(Equal("/v1.0/metadata/:m1/:m2/:m3"))
+		})
+
+		It("GenerateCustomPath", func() {
+			data := map[string]interface{}{
+				"m1": "mm1",
+				"m2": "true",
+				"m3": "3",
+			}
+			path, err := metadataSchema.GenerateCustomPath(data)
+			Expect(err).To(Succeed())
+			Expect(path).To(Equal("/v1.0/metadata/mm1/true/3"))
+		})
+
+		It("GenerateCustomPathFail", func() {
+			data := map[string]interface{}{
+				"m1": "mm1",
+				"m2": "true",
+				"m3": "3",
+			}
+			path, err := metadataFailedSchema.GenerateCustomPath(data)
+			Expect(err).To(MatchError("Error in generating custom path /v1.0/metadata-failed/:m1/:failed: there is no such property failed"))
+			Expect(path).To(Equal(""))
+		})
+
+		AfterEach(func() {
+			ClearManager()
+		})
+	})
+
 	Describe("Formatters", func() {
 		var netSchema *Schema
 

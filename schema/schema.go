@@ -20,6 +20,7 @@ import (
 
 	"github.com/cloudwan/gohan/util"
 	"github.com/xeipuuv/gojsonschema"
+	"strings"
 )
 
 //Schema type for defining data type
@@ -344,6 +345,55 @@ func (schema *Schema) StateVersioning() bool {
 		return false
 	}
 	return stateful
+}
+
+func (schema *Schema) SyncKeyTemplate() string {
+	syncKeyTemplateRaw, ok := schema.Metadata["sync_key_template"]
+	if !ok {
+		return ""
+	}
+	syncKeyTemplate, ok := syncKeyTemplateRaw.(string)
+	if !ok {
+		return ""
+	}
+	return syncKeyTemplate
+}
+
+func (schema *Schema) GenerateCustomPath(data map[string]interface{}) (string, error) {
+	path := ""
+	var syncKeyTemplatePathSplit []string = strings.Split(schema.SyncKeyTemplate(), "/")
+	for _, partOfPath := range syncKeyTemplatePathSplit {
+		substitution := ""
+		if strings.HasPrefix(partOfPath, ":") {
+			prop := strings.TrimPrefix(partOfPath, ":")
+			if data[prop] != nil {
+				substitution = data[prop].(string)
+			} else {
+				return "", fmt.Errorf("Error in generating custom path %s: there is no such property %s",
+					schema.SyncKeyTemplate(), prop)
+			}
+
+		} else {
+			substitution = partOfPath
+		}
+		if path != "" {
+			path = path + "/" + substitution
+		} else {
+			path = substitution
+		}
+	}
+	return "/" + path, nil
+}
+
+func GetSchemaByPath(path string) *Schema {
+	var schemaByPath *Schema
+	for _, schema := range GetManager().Schemas() {
+		if strings.HasPrefix(path, schema.URL) {
+			schemaByPath = schema
+			break
+		}
+	}
+	return schemaByPath
 }
 
 // FormatParentID ...

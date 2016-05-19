@@ -186,9 +186,28 @@ func (server *Server) syncEvent(resource *schema.Resource) error {
 	}
 	defer tx.Close()
 	eventType := resource.Get("type").(string)
-	path := resource.Get("path").(string)
-	path = configPrefix + path
+	resourcePath := resource.Get("path").(string)
 	body := resource.Get("body").(string)
+
+	var curSchema = schema.GetSchemaByPath(resourcePath)
+
+	path := resourcePath
+	if curSchema.SyncKeyTemplate() != "" {
+		var data map[string]interface{}
+		err := json.Unmarshal(([]byte)(body), &data)
+		if err != nil {
+			log.Error("Error %v during unmarshaling data %v", err, data)
+		} else {
+			path, err = curSchema.GenerateCustomPath(data)
+			if err != nil {
+				path = resourcePath
+				log.Error("%v", err)
+			}
+		}
+	}
+	path = configPrefix + path
+	log.Info("Generated path: %s", path)
+
 	version, ok := resource.Get("version").(int)
 	if !ok {
 		log.Debug("cannot cast version value in int for %s", path)
